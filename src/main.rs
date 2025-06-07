@@ -18,6 +18,22 @@ struct Args {
 
     #[arg(short = 'c', long)]
     count: Option<u32>,
+
+    /// Show detailed packet analysis (like Wireshark's packet details)
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Show binary/hex dump of packets
+    #[arg(short = 'x', long)]
+    hex: bool,
+
+    /// Show protocol tree breakdown
+    #[arg(short = 'P', long)]
+    tree: bool,
+
+    /// Show only specific fields (e.g., "ip.src,tcp.port")
+    #[arg(short = 'T', long)]
+    fields: Option<String>,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -38,12 +54,42 @@ fn build_tshark_command(args: &Args) -> Vec<String> {
         "-l".to_string(), 
     ];
 
+    // Basic packet count
     if let Some(count) = args.count {
         cmd_args.extend(["-c".to_string(), count.to_string()]);
     }
 
+    // Capture filter
     if let Some(ref filter) = args.filter {
         cmd_args.extend(["-f".to_string(), filter.clone()]);
+    }
+
+    // DETAILED ANALYSIS OPTIONS
+    
+    // Show protocol tree breakdown (-V)
+    if args.tree {
+        cmd_args.push("-V".to_string());
+    }
+    
+    // Show hex dump (-x)
+    if args.hex {
+        cmd_args.push("-x".to_string());
+    }
+    
+    // Verbose output (-v) - shows detailed packet info
+    if args.verbose {
+        cmd_args.push("-v".to_string());
+    }
+    
+    // Custom fields output (-T fields -e field1 -e field2)
+    if let Some(ref fields) = args.fields {
+        cmd_args.extend(["-T".to_string(), "fields".to_string()]);
+        for field in fields.split(',') {
+            cmd_args.extend(["-e".to_string(), field.trim().to_string()]);
+        }
+        // Add headers for readability
+        cmd_args.push("-E".to_string());
+        cmd_args.push("header=y".to_string());
     }
 
     cmd_args
@@ -70,6 +116,21 @@ async fn run_tshark_monitor(args: &Args) -> Result<()> {
     if let Some(ref filter) = args.filter {
         println!("📡 Filter: {}", filter);
     }
+    
+    // Show analysis mode
+    if args.tree {
+        println!("🌳 Protocol tree analysis enabled");
+    }
+    if args.hex {
+        println!("🔢 Hex dump enabled");
+    }
+    if args.verbose {
+        println!("📋 Verbose packet details enabled");
+    }
+    if let Some(ref fields) = args.fields {
+        println!("🎯 Custom fields: {}", fields);
+    }
+    
     println!("⏹️  Press Ctrl+C to stop\n");
 
     let mut child = AsyncCommand::new("tshark")
