@@ -22,8 +22,8 @@ An encrypted packet capture tool with Wireshark integration. Automatically encry
 1. **Clone and build:**
 
    ```bash
-   git clone https://github.com/0xAr0k/wireshark-rs
-   cd wireshark-rs
+   git clone https://github.com/0xAr0k/niskala
+   cd niskala
    cargo build --release
    ```
 
