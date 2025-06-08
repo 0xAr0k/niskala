@@ -2,6 +2,11 @@ use clap::Parser;
 use std::process::{Command, Stdio};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as AsyncCommand;
+use std::path::PathBuf;
+use std::fs;
+use std::io;
+use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit, aead::Aead};
+use rand::Rng;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -38,6 +43,72 @@ struct Args {
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+fn get_secure_storage_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let storage_dir = home.join(".wireshark_secure");
+    
+    if !storage_dir.exists() {
+        fs::create_dir_all(&storage_dir)?;
+        println!("📁 Created secure storage directory: {}", storage_dir.display());
+    }
+    
+    Ok(storage_dir)
+}
+
+fn prompt_password() -> Result<String> {
+    println!("🔐 Enter password for encryption:");
+    let password = rpassword::read_password()?;
+    if password.len() < 8 {
+        return Err("Password must be at least 8 characters".into());
+    }
+    Ok(password)
+}
+
+fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; 32] {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
+    let mut hasher = DefaultHasher::new();
+    password.hash(&mut hasher);
+    salt.hash(&mut hasher);
+    
+    let hash = hasher.finish().to_be_bytes();
+    let mut key = [0u8; 32];
+    for i in 0..4 {
+        let start = i * 8;
+        key[start..start + 8].copy_from_slice(&hash);
+    }
+    key
+}
+
+fn encrypt_file(file_path: &PathBuf, password: &str) -> Result<PathBuf> {
+    let data = fs::read(file_path)?;
+    
+    let salt: [u8; 16] = rand::thread_rng().r#gen();
+    let key_bytes = derive_key_from_password(password, &salt);
+    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    
+    let nonce_bytes: [u8; 12] = rand::thread_rng().r#gen();
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    
+    let ciphertext = cipher.encrypt(nonce, data.as_ref())
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+    
+    let encrypted_path = file_path.with_extension("pcapng.enc");
+    
+    let mut encrypted_data = Vec::new();
+    encrypted_data.extend_from_slice(&salt);
+    encrypted_data.extend_from_slice(&nonce_bytes);
+    encrypted_data.extend_from_slice(&ciphertext);
+    
+    fs::write(&encrypted_path, encrypted_data)?;
+    fs::remove_file(file_path)?;
+    
+    println!("🔒 File encrypted and saved: {}", encrypted_path.display());
+    Ok(encrypted_path)
+}
+
 
 fn check_tool_availability(tool: &str) -> Result<bool> {
     Command::new("which")
@@ -47,12 +118,17 @@ fn check_tool_availability(tool: &str) -> Result<bool> {
         .map_err(Into::into)
 }
 
-fn build_tshark_command(args: &Args) -> Vec<String> {
+fn build_tshark_command(args: &Args, output_file: Option<&PathBuf>) -> Vec<String> {
     let mut cmd_args = vec![
         "-i".to_string(),
         args.interface.clone(),
-        "-l".to_string(), 
     ];
+    
+    if let Some(file) = output_file {
+        cmd_args.extend(["-w".to_string(), file.to_string_lossy().to_string()]);
+    } else {
+        cmd_args.push("-l".to_string());
+    }
 
     // Basic packet count
     if let Some(count) = args.count {
@@ -110,7 +186,14 @@ fn build_wireshark_command(args: &Args) -> Vec<String> {
 }
 
 async fn run_tshark_monitor(args: &Args) -> Result<()> {
-    let cmd_args = build_tshark_command(args);
+    let storage_dir = get_secure_storage_path()?;
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    let output_file = storage_dir.join(format!("capture_{}.pcapng", timestamp));
+    
+    let password = prompt_password()?;
+    let cmd_args = build_tshark_command(args, Some(&output_file));
     
     println!("🔍 Starting tshark traffic monitoring on interface: {}", args.interface);
     if let Some(ref filter) = args.filter {
@@ -148,11 +231,30 @@ async fn run_tshark_monitor(args: &Args) -> Result<()> {
         }
     }
 
-    child.wait().await?;
+    let exit_status = child.wait().await?;
+    
+    if exit_status.success() && output_file.exists() {
+        println!("📦 Capture completed. Encrypting file...");
+        encrypt_file(&output_file, &password)?;
+        println!("✅ Capture saved and encrypted successfully!");
+    }
+    
     Ok(())
 }
 
 fn run_wireshark_gui(args: &Args) -> Result<()> {
+    println!("⚠️  WARNING: Wireshark GUI mode does not support automatic encryption!");
+    println!("💡 Use --tshark flag for encrypted capture, or manually encrypt files later.");
+    println!("   Continue with GUI? (y/N): ");
+    
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    
+    if !input.trim().to_lowercase().starts_with('y') {
+        println!("❌ Cancelled. Use: cargo run -- --tshark for encrypted capture");
+        return Ok(());
+    }
+    
     let cmd_args = build_wireshark_command(args);
     
     println!("🖥️  Launching Wireshark GUI on interface: {}", args.interface);
