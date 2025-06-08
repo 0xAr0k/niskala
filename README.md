@@ -66,7 +66,7 @@ niskala --tshark --count 50
 niskala --tshark --interface wlan0
 
 # Apply network filter
-niskala --tshark --filter "host 192.168.1.1"
+niskala --tshark --filter "<IP_ADDR>"
 ```
 
 ### View Encrypted Files
