@@ -1,7 +1,15 @@
 [package]
-name = "ws"
+name = "secure-wireshark"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "Encrypted packet capture tool with Wireshark integration"
+license = "MIT"
+repository = "https://github.com/0xAr0k/wireshark-rs"
+authors = ["Arok"]
+
+[[bin]]
+name = "niskala"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
@@ -10,3 +18,4 @@ aes-gcm = "0.10"
 rpassword = "7.0"
 dirs = "5.0"
 rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }

@@ -39,6 +39,14 @@ struct Args {
     /// Show only specific fields (e.g., "ip.src,tcp.port")
     #[arg(short = 'T', long)]
     fields: Option<String>,
+
+    /// List all encrypted capture files
+    #[arg(short, long)]
+    list: bool,
+
+    /// Decrypt and open a specific capture file (provide filename)
+    #[arg(short, long)]
+    open: Option<String>,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -107,6 +115,91 @@ fn encrypt_file(file_path: &PathBuf, password: &str) -> Result<PathBuf> {
     
     println!("🔒 File encrypted and saved: {}", encrypted_path.display());
     Ok(encrypted_path)
+}
+
+fn decrypt_file(encrypted_path: &PathBuf, password: &str) -> Result<PathBuf> {
+    let encrypted_data = fs::read(encrypted_path)?;
+    
+    if encrypted_data.len() < 28 {
+        return Err("Invalid encrypted file format".into());
+    }
+    
+    let salt = &encrypted_data[0..16];
+    let nonce_bytes = &encrypted_data[16..28];
+    let ciphertext = &encrypted_data[28..];
+    
+    let key_bytes = derive_key_from_password(password, salt);
+    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Nonce::from_slice(nonce_bytes);
+    
+    let plaintext = cipher.decrypt(nonce, ciphertext)
+        .map_err(|_| "Decryption failed - wrong password?")?;
+    
+    let decrypted_path = encrypted_path.with_extension("pcapng");
+    fs::write(&decrypted_path, plaintext)?;
+    
+    println!("🔓 File decrypted: {}", decrypted_path.display());
+    Ok(decrypted_path)
+}
+
+fn list_encrypted_files() -> Result<()> {
+    let storage_dir = get_secure_storage_path()?;
+    
+    println!("📋 Encrypted capture files in: {}", storage_dir.display());
+    println!("{}", "=".repeat(60));
+    
+    let mut found_files = false;
+    if let Ok(entries) = fs::read_dir(&storage_dir) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("enc") {
+                    let filename = path.file_name().unwrap().to_string_lossy();
+                    if let Ok(metadata) = entry.metadata() {
+                        let size = metadata.len();
+                        if let Ok(modified) = metadata.modified() {
+                            let datetime: chrono::DateTime<chrono::Local> = modified.into();
+                            println!("📦 {} ({} bytes) - {}", 
+                                filename, size, datetime.format("%Y-%m-%d %H:%M:%S"));
+                            found_files = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if !found_files {
+        println!("📭 No encrypted files found");
+        println!("💡 Create captures with: cargo run -- --tshark");
+    }
+    
+    Ok(())
+}
+
+fn open_encrypted_file(filename: &str) -> Result<()> {
+    let storage_dir = get_secure_storage_path()?;
+    let encrypted_path = storage_dir.join(filename);
+    
+    if !encrypted_path.exists() {
+        return Err(format!("File '{}' not found in {}", filename, storage_dir.display()).into());
+    }
+    
+    let password = prompt_password()?;
+    let decrypted_path = decrypt_file(&encrypted_path, &password)?;
+    
+    println!("🖥️  Opening decrypted file in Wireshark...");
+    Command::new("wireshark")
+        .arg(decrypted_path.to_string_lossy().as_ref())
+        .spawn()?
+        .wait()?;
+    
+    println!("🗑️  Cleaning up decrypted file...");
+    fs::remove_file(&decrypted_path)?;
+    println!("✅ Done!");
+    
+    Ok(())
 }
 
 
@@ -289,6 +382,16 @@ fn validate_interface(interface: &str) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    // Handle list command first
+    if args.list {
+        return list_encrypted_files();
+    }
+
+    // Handle open command
+    if let Some(filename) = &args.open {
+        return open_encrypted_file(filename);
+    }
 
     if let Err(e) = validate_interface(&args.interface) {
         eprintln!("❌ Error: {}", e);
