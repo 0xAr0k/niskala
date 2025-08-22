@@ -1,25 +1,21 @@
 use clap::Parser;
 use std::path::PathBuf;
 
-// Import our library components
 use secure_wireshark::{
     application::cli::Args,
     infrastructure::factories::{create_default_container, DependencyContainer},
     domain::entities::CaptureSession,
     domain::ports::notification::UserNotification,
-    domain::ports::validation::{CaptureConfig, ValidationSeverity, CaptureConfigValidator},
+    domain::ports::validation::{CaptureValidationConfig, ValidationSeverity, CaptureConfigValidator},
     Result,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Parse command line arguments
     let args = Args::parse();
     
-    // Create dependency container with default configuration
     let mut container = create_default_container();
     
-    // Handle different commands
     match determine_command(&args) {
         Command::ListFiles => {
             handle_list_command(&mut container).await?;
@@ -35,7 +31,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-// Enum to represent different commands
 #[derive(Debug)]
 enum Command {
     ListFiles,
@@ -43,7 +38,6 @@ enum Command {
     StartCapture,
 }
 
-// Determine which command to execute based on args
 fn determine_command(args: &Args) -> Command {
     if args.list {
         Command::ListFiles
@@ -54,7 +48,6 @@ fn determine_command(args: &Args) -> Command {
     }
 }
 
-// Handle listing encrypted files
 async fn handle_list_command(container: &mut DependencyContainer) -> Result<()> {
     let notifier = container.user_notification();
     let repository = container.encrypted_capture_repository();
@@ -85,7 +78,6 @@ async fn handle_list_command(container: &mut DependencyContainer) -> Result<()> 
     Ok(())
 }
 
-// Handle opening/decrypting a file
 async fn handle_open_command(
     container: &mut DependencyContainer, 
     filename: &str
@@ -95,14 +87,12 @@ async fn handle_open_command(
     
     notifier.show_info(&format!("🔓 Opening encrypted file: {}", filename)).await?;
     
-    // Find the file by ID (simplified - in reality you'd have better file selection)
     let captures = repository.list_captures().await?;
     let target_capture = captures
         .into_iter()
         .find(|c| c.storage_info.handle.id.contains(filename))
         .ok_or_else(|| format!("File '{}' not found", filename))?;
     
-    // Get password from user
     let password = notifier.ask_password("Enter password to decrypt file").await?;
     
     // Decrypt the file
@@ -173,12 +163,12 @@ async fn handle_capture_command(
             return Ok(());
         }
         
-        // Launch Wireshark GUI (simplified)
+        // Launch Wireshark GUI
         return launch_wireshark_gui(args, &notifier).await;
     }
     
     // Validate configuration
-    let config = CaptureConfig {
+    let config = CaptureValidationConfig {
         interface: args.interface.clone(),
         filter: args.filter.clone(),
         output_path: generate_output_path()?,
@@ -211,12 +201,7 @@ async fn handle_capture_command(
     let password = notifier.ask_password("Enter password for encrypting capture").await?;
     
     // Create capture session
-    let capture_options = secure_wireshark::domain::entities::CaptureOptions {
-        verbose: args.verbose,
-        hex_dump: args.hex,
-        protocol_tree: args.tree,
-        custom_fields: args.fields.clone(),
-    };
+    let capture_options = args.to_capture_options();
     let session = CaptureSession::new(
         args.interface.clone(),
         config.output_path.clone(),
@@ -230,6 +215,20 @@ async fn handle_capture_command(
     
     if let Some(ref filter) = args.filter {
         notifier.show_info(&format!("📡 Filter: {}", filter)).await?;
+    }
+    
+    // Show export options
+    match args.export.as_str() {
+        "ws" => notifier.show_info(&format!("🌐 WebSocket streaming to {}", args.ws_address)).await?,
+        "both" => {
+            notifier.show_info("💾 File export enabled").await?;
+            notifier.show_info(&format!("🌐 WebSocket streaming to {}", args.ws_address)).await?;
+        },
+        _ => notifier.show_info("💾 File export enabled").await?,
+    }
+
+    if args.realtime {
+        notifier.show_info(&format!("📺 Real-time terminal output: {}", args.output_format)).await?;
     }
     
     // Show analysis options
@@ -249,7 +248,7 @@ async fn handle_capture_command(
     let progress = container.progress_reporter();
     let progress_handle = progress.start_progress("Capturing packets", args.count.map(|c| c as u64)).await?;
     
-    // Start the capture (simplified - in reality this would be more complex)
+    // Start the capture
     let capture_handle = capture_executor
         .start_live_capture(&args.interface, &config.output_path, &session.options)
         .await?;
@@ -258,7 +257,7 @@ async fn handle_capture_command(
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     progress.update_progress(&progress_handle, 50, Some("Capturing...")).await?;
     
-    // Stop capture (simplified)
+    // Stop capture
     let result = capture_executor.stop_capture(capture_handle).await?;
     progress.complete_progress(&progress_handle, Some(&format!("Captured {} packets", result.packets_captured))).await?;
     
@@ -273,7 +272,7 @@ async fn handle_capture_command(
     Ok(())
 }
 
-// Launch Wireshark GUI (simplified implementation)
+// Launch Wireshark GUI
 async fn launch_wireshark_gui(args: &Args, notifier: &std::sync::Arc<dyn UserNotification + Send + Sync>) -> Result<()> {
     notifier.show_info(&format!("🖥️  Launching Wireshark GUI on interface: {}", args.interface)).await?;
     

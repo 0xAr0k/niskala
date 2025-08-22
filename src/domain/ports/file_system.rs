@@ -118,7 +118,7 @@ pub enum FileType {
     Other,
 }
 
-/// File permissions (simplified cross-platform representation)
+/// File permissions (cross-platform representation)
 #[derive(Debug, Clone)]
 pub struct FilePermissions {
     pub owner_read: bool,

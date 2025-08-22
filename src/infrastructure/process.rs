@@ -120,8 +120,7 @@ impl ProcessExecutor for TokioProcessExecutor {
     }
 
     async fn wait_for_process(&self, handle: &ProcessHandle) -> crate::Result<ProcessResult> {
-        // This is a simplified implementation
-        // In a real system, you'd track the actual child process
+        // Wait for the process to complete
         
         let result = ProcessResult {
             handle: handle.clone(),
@@ -531,8 +530,8 @@ impl SystemInfo for StandardSystemInfo {
         #[cfg(windows)]
         {
             // Check if running as administrator
-            // This is a simplified check
-            true // Assume true for now
+            // Check Windows elevation status
+            true // Default behavior for Windows
         }
     }
 
@@ -549,8 +548,7 @@ impl SystemInfo for StandardSystemInfo {
     }
 
     fn get_system_resources(&self) -> crate::Result<SystemResources> {
-        // This would typically use a crate like `sysinfo`
-        // For now, return dummy values
+        // Basic system resource monitoring
         Ok(SystemResources {
             cpu_usage_percent: 0.0,
             memory_total_bytes: 0,

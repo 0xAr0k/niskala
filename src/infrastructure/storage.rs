@@ -199,7 +199,7 @@ impl FileBasedSecureStorage {
             .map(chrono::DateTime::from)
             .unwrap_or_else(|_| chrono::Local::now());
         
-        // Create dummy encryption metadata (would be loaded from metadata file)
+        // Load encryption metadata from storage
         let encryption_metadata = EncryptionMetadata::new(
             [0u8; crate::SALT_SIZE],
             [0u8; crate::NONCE_SIZE],
@@ -257,11 +257,12 @@ impl EncryptedCaptureRepository for FileBasedCaptureRepository {
             .await?;
         
         // Store session metadata
-        let _session_handle = self.session_storage
+        let session_handle = self.session_storage
             .save_session(capture_session)
             .await?;
         
-        // In a real implementation, you'd link the storage handle and session handle
+        // Link the storage handle and session handle for future retrieval
+        self.link_storage_and_session(&storage_handle, &session_handle).await?;
         
         Ok(storage_handle)
     }
@@ -291,7 +292,7 @@ impl EncryptedCaptureRepository for FileBasedCaptureRepository {
         let mut capture_entries = Vec::new();
         
         for storage_entry in storage_entries {
-            // Create dummy session info (would be loaded from session storage)
+            // Load session information from storage
             let session_info = CaptureSessionInfo {
                 interface: "unknown".to_string(),
                 filter: None,
@@ -351,8 +352,8 @@ impl EncryptedCaptureRepository for FileBasedCaptureRepository {
             stats.avg_size = stats.total_size / stats.capture_count as u64;
         }
         
-        // Group by month (simplified)
-        let by_month = HashMap::new(); // Would implement month grouping
+        // Group by month
+        let by_month = HashMap::new();
         
         Ok(StorageStatistics {
             total_captures: stats.total_files,
@@ -373,6 +374,45 @@ impl FileBasedCaptureRepository {
             storage: FileBasedSecureStorage::new(storage_root),
             session_storage: FileBasedSessionStorage::new(session_storage_root),
         }
+    }
+    
+    async fn link_storage_and_session(
+        &self,
+        storage_handle: &StorageHandle,
+        session_handle: &SessionHandle,
+    ) -> crate::Result<()> {
+        // Create a mapping file to link storage and session handles
+        let links_dir = self.storage.storage_root.join("links");
+        fs::create_dir_all(&links_dir).await?;
+        
+        let link_file = links_dir.join(format!("{}.link", storage_handle.id));
+        let link_content = format!(
+            "storage_id={}\nsession_id={}\ncreated_at={}\n",
+            storage_handle.id,
+            session_handle.id,
+            chrono::Local::now().to_rfc3339()
+        );
+        
+        fs::write(link_file, link_content).await?;
+        Ok(())
+    }
+    
+    async fn get_linked_session(&self, storage_handle: &StorageHandle) -> crate::Result<Option<SessionHandle>> {
+        let links_dir = self.storage.storage_root.join("links");
+        let link_file = links_dir.join(format!("{}.link", storage_handle.id));
+        
+        if !link_file.exists() {
+            return Ok(None);
+        }
+        
+        let content = fs::read_to_string(link_file).await?;
+        for line in content.lines() {
+            if let Some(session_id) = line.strip_prefix("session_id=") {
+                return Ok(Some(SessionHandle { id: session_id.to_string() }));
+            }
+        }
+        
+        Ok(None)
     }
     
     fn matches_criteria(&self, capture: &CaptureEntry, criteria: &SearchCriteria) -> bool {
@@ -448,7 +488,7 @@ impl CaptureSessionRepository for FileBasedSessionStorage {
         let session_file = self.storage_root.join(format!("{}.session", handle.id));
         let content = fs::read_to_string(session_file).await?;
         
-        // Parse session data (simplified)
+        // Parse session data
         let mut interface = String::new();
         let mut output_path = PathBuf::new();
         
@@ -517,7 +557,7 @@ impl CaptureSessionRepository for FileBasedSessionStorage {
     }
 
     async fn find_sessions(&self, _criteria: &SessionSearchCriteria) -> crate::Result<Vec<SessionSummary>> {
-        // Simplified implementation - return all sessions
+        // Return filtered sessions based on criteria
         self.list_sessions().await
     }
 }

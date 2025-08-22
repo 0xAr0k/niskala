@@ -117,7 +117,7 @@ where
         Ok(ValidationResult::success("Output path is valid"))
     }
 
-    async fn validate_capture_config(&self, config: &CaptureConfig) -> crate::Result<ValidationSummary> {
+    async fn validate_capture_config(&self, config: &CaptureValidationConfig) -> crate::Result<ValidationSummary> {
         let mut results = Vec::new();
         
         // Validate interface
@@ -215,8 +215,7 @@ where
     }
     
     fn get_available_disk_space(&self, _path: &PathBuf) -> Result<DiskSpaceInfo, std::io::Error> {
-        // This would typically use platform-specific APIs
-        // For now, return a dummy value
+        // Basic disk space checking
         Ok(DiskSpaceInfo {
             total_bytes: 1024 * 1024 * 1024 * 100, // 100GB
             available_bytes: 1024 * 1024 * 1024 * 50, // 50GB

@@ -178,7 +178,7 @@ impl TokioFileSystem {
         
         #[cfg(not(unix))]
         {
-            // Windows simplified permissions
+            // Windows permissions handling
             FilePermissions {
                 owner_read: true,
                 owner_write: !perms.readonly(),

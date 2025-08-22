@@ -9,6 +9,7 @@ pub mod process;        // System process execution
 pub mod validation;     // Concrete validation implementations
 pub mod storage;        // File-based storage implementations
 pub mod notification;   // Console/terminal user interaction
+pub mod websocket;      // WebSocket streaming for real-time data
 
 // Factories for creating adapter instances
 pub mod factories;
@@ -21,4 +22,5 @@ pub use process::*;
 pub use validation::*;
 pub use storage::*;
 pub use notification::*;
+pub use websocket::*;
 pub use factories::*;

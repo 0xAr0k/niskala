@@ -1,5 +1,4 @@
 use clap::Parser;
-use std::path::PathBuf;
 
 // CLI argument structure
 #[derive(Parser, Debug, Clone)]
@@ -40,6 +39,22 @@ pub struct Args {
     /// Decrypt and open a specific capture file (provide filename)
     #[arg(short, long)]
     pub open: Option<String>,
+
+    /// Export format: file, ws (WebSocket), both
+    #[arg(short = 'e', long, default_value = "file")]
+    pub export: String,
+
+    /// WebSocket server address for live streaming
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    pub ws_address: String,
+
+    /// Real-time output to terminal (works with --export)
+    #[arg(short = 'r', long)]
+    pub realtime: bool,
+
+    /// Output format for terminal display: text, json, compact
+    #[arg(long, default_value = "text")]
+    pub output_format: String,
 }
 
 impl Args {
@@ -50,6 +65,10 @@ impl Args {
             hex_dump: self.hex,
             protocol_tree: self.tree,
             custom_fields: self.fields.clone(),
+            export_format: self.export.clone(),
+            ws_address: self.ws_address.clone(),
+            realtime_output: self.realtime,
+            output_format: self.output_format.clone(),
         }
     }
 }

@@ -18,7 +18,7 @@ pub trait CaptureConfigValidator {
     async fn validate_output_path(&self, path: &PathBuf) -> crate::Result<ValidationResult>;
 
     /// Validate complete capture configuration
-    async fn validate_capture_config(&self, config: &CaptureConfig) -> crate::Result<ValidationSummary>;
+    async fn validate_capture_config(&self, config: &CaptureValidationConfig) -> crate::Result<ValidationSummary>;
 }
 
 /// Port for validating encryption settings
@@ -80,7 +80,7 @@ pub struct ValidationSummary {
 
 /// Capture configuration for validation
 #[derive(Debug, Clone)]
-pub struct CaptureConfig {
+pub struct CaptureValidationConfig {
     pub interface: String,
     pub filter: Option<String>,
     pub output_path: PathBuf,

@@ -15,12 +15,31 @@ pub struct CaptureSession {
     pub created_at: DateTime<Local>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct CaptureOptions {
     pub verbose: bool,
     pub hex_dump: bool,
     pub protocol_tree: bool,
     pub custom_fields: Option<String>,
+    pub export_format: String,
+    pub ws_address: String,
+    pub realtime_output: bool,
+    pub output_format: String,
+}
+
+impl Default for CaptureOptions {
+    fn default() -> Self {
+        Self {
+            verbose: false,
+            hex_dump: false,
+            protocol_tree: false,
+            custom_fields: None,
+            export_format: "file".to_string(),
+            ws_address: "127.0.0.1:8080".to_string(),
+            realtime_output: false,
+            output_format: "text".to_string(),
+        }
+    }
 }
 
 // Different types of capture sessions
